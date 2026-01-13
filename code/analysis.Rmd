@@ -1,7 +1,96 @@
 ---
 title: "Análise: Eficiência Produtiva vs. Retorno Financeiro"
-output:
-  html_document:
-    code_folding: "hide"
+output: html_document
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+## Tratamento dos dados
+
+Antes de começar qualquer análise, devemos obrigatoriamente tratar e limpar melhor essses dados para conseguir trabalhar. Para facilitar o pocesso de modificação de nomes das variáveis, foi usado o pacote *Janitor* para evitar qualquer pontuação, acentuação e símbolos nas variáveis. Lembrando támbem que para o objetivo do estudo, a descrição do produto que realmente importa é apenas a descrição do código sh2, pois caso a descrição continuar completa, os dados ficariam mais dispersos.
+Após usar o *clean_names()* e dar um *summary()* podemos ver que algumas variáveis começam com x20... (x2023_valor; x2025_quilograma_liquido; ect), então usamos *pivot_longer()* para resolver isso. Mesmo sendo simples, seria um problema deixar tudo apenas como ficou a configuração do *pivot_longer*, pois iria misturar valores de diferentes grandezas (financeiro e peso), sendo necessário utilizar um **case_when** para garantir que serão separados.Finalmenente, podemos modificar os valores númericos do código sh2 em string, assim, ficará com melhor visualização em gráficos e
+
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+library(janitor)
+
+dados_brutos <- read_excel(here("data", "dados_exportacao.xlsx")) |> 
+  clean_names() # clean names altera sinal de pontuação.
+summary(dados_brutos)
+
+
+dados <-  dados_brutos |> 
+  select(
+    mes, 
+    codigo_sh2,
+    starts_with("x20"), #pega todas as vraiveis com começo x20
+  ) |> 
+  pivot_longer(
+    cols = starts_with("x20"),
+    names_to = "nome_sujo", # guarda o nome antigo na nova coluna
+    values_to = "valor_sujo" # pega todos os números nesta coluna nova
+  ) |> 
+  mutate(
+    codigo_sh2 = as.numeric(codigo_sh2),
+    ano = as.numeric(str_sub(nome_sujo, 2, 5)), # O texto é "x2023_valor...". 
+    # str_sub(..., 2, 5) diz: "Comece na letra 2 e pare na 5".
+    tipo = case_when(
+      # Se encontrar "valor" escrito, chame de 'dolar'
+      str_detect(nome_sujo, "valor") ~ "dolar",
+      
+      # Se encontrar "quilograma" (ou 'liquido'), chame de 'peso'
+      str_detect(nome_sujo, "quilograma") ~ "peso",
+      
+      # (Opcional) Rede de segurança: Se aparecer algo estranho, avise!
+      TRUE ~ "erro_verificar"
+    )
+    
+  ) |> 
+  pivot_wider(
+    names_from = tipo,       # Usa os nomes "dolar" e "peso" 
+    values_from = valor_sujo, # Pega os números misturados
+    values_fn = sum
+  ) |>
+  mutate(
+    # Trocando NA por zero para não dar numeros imensos
+    dolar = replace_na(dolar, 0),
+    peso  = replace_na(peso, 0),
+    preco_ton = (dolar / peso) * 1000,
+    preco_ton = if_else(
+      condition = is.infinite(preco_ton) | is.nan(preco_ton), 
+      # se der um numero imenso ou na o valor será 0
+            true      = 0, 
+            false     = preco_ton
+    ),
+    codigo_sh2 = as.numeric(codigo_sh2),
+        produto = case_when(
+      # Codigo SH2   ENTÃO   Nome Legível
+      codigo_sh2 == 10   ~   "Cereais",
+      codigo_sh2 == 12   ~   "Soja",
+      codigo_sh2 == 02   ~   "Carnes",
+      codigo_sh2 == 09   ~   "Café",
+      codigo_sh2 == 17   ~   "Açúcar",
+      
+      # O "Resto"
+      TRUE               ~   "Outros"
+    )
+  ) 
+  
+  
+glimpse(dados)
+
+dados |> 
+  filter(produto == "Outros") |> 
+  distinct(codigo_sh2)
+
+```
 
