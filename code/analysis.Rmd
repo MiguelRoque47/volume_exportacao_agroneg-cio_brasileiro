@@ -93,4 +93,4 @@ dados |>
   distinct(codigo_sh2)
 
 ```
-
+Esse Codigoainda está em processso
