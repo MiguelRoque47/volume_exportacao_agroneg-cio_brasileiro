@@ -13,7 +13,7 @@ knitr::opts_chunk$set(
 
 ## Tratamento dos dados
 
-Antes das análises, faremos o tratamento e verificamos com os dados estão com um histograma e boxplot. 
+Antes das análises, faremos o tratamento e verificamos como os dados estão com um histograma e boxplot. 
 
 ### Resumo do que foi feito:
 Os dados foram importados a partir de um arquivo Excel e tiveram seus nomes de variáveis padronizados com o pacote janitor. Em seguida, selecionaram-se apenas as variáveis relevantes (mês, código SH2, código NCM e valores anuais). As colunas referentes a diferentes anos, valores financeiros e quantidades físicas foram reorganizadas para o formato tidy com pivot_longer(), permitindo a identificação do ano e do tipo de medida (valor ou peso). Posteriormente, os dados foram agregados de forma consciente do nível NCM para o nível SH2, evitando duplicações. Por fim, os valores financeiros e físicos foram separados em colunas distintas e calculou-se o preço médio de exportação em dólares por tonelada.
