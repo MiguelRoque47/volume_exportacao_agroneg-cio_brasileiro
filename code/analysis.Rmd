@@ -13,8 +13,10 @@ knitr::opts_chunk$set(
 
 ## Tratamento dos dados
 
-Antes de começar qualquer análise, devemos obrigatoriamente tratar e limpar melhor essses dados para conseguir trabalhar. Para facilitar o pocesso de modificação de nomes das variáveis, foi usado o pacote *Janitor* para evitar qualquer pontuação, acentuação e símbolos nas variáveis. Lembrando támbem que para o objetivo do estudo, a descrição do produto que realmente importa é apenas a descrição do código sh2, pois caso a descrição continuar completa, os dados ficariam mais dispersos.
-Após usar o *clean_names()* e dar um *summary()* podemos ver que algumas variáveis começam com x20... (x2023_valor; x2025_quilograma_liquido; ect), então usamos *pivot_longer()* para resolver isso. Mesmo sendo simples, seria um problema deixar tudo apenas como ficou a configuração do *pivot_longer*, pois iria misturar valores de diferentes grandezas (financeiro e peso), sendo necessário utilizar um **case_when** para garantir que serão separados.Finalmenente, podemos modificar os valores númericos do código sh2 em string, assim, ficará com melhor visualização em gráficos e
+Antes das análises, faremos o tratamento e verificamos com os dados estão com um histograma e boxplot. 
+
+### Resumo do que foi feito:
+Os dados foram importados a partir de um arquivo Excel e tiveram seus nomes de variáveis padronizados com o pacote janitor. Em seguida, selecionaram-se apenas as variáveis relevantes (mês, código SH2, código NCM e valores anuais). As colunas referentes a diferentes anos, valores financeiros e quantidades físicas foram reorganizadas para o formato tidy com pivot_longer(), permitindo a identificação do ano e do tipo de medida (valor ou peso). Posteriormente, os dados foram agregados de forma consciente do nível NCM para o nível SH2, evitando duplicações. Por fim, os valores financeiros e físicos foram separados em colunas distintas e calculou-se o preço médio de exportação em dólares por tonelada.
 
 
 ```{r}
@@ -25,72 +27,70 @@ library(janitor)
 
 dados_brutos <- read_excel(here("data", "dados_exportacao.xlsx")) |> 
   clean_names() # clean names altera sinal de pontuação.
-summary(dados_brutos)
+glimpse(dados_brutos)
 
 
-dados <-  dados_brutos |> 
+dados <- dados_brutos |> 
+  clean_names() |> 
   select(
-    mes, 
+    mes,
     codigo_sh2,
-    starts_with("x20"), #pega todas as vraiveis com começo x20
+    codigo_ncm,   
+    starts_with("x20")
   ) |> 
   pivot_longer(
-    cols = starts_with("x20"),
-    names_to = "nome_sujo", # guarda o nome antigo na nova coluna
-    values_to = "valor_sujo" # pega todos os números nesta coluna nova
+    starts_with("x20"),
+    names_to = "nome_sujo",
+    values_to = "valor"
   ) |> 
   mutate(
-    codigo_sh2 = as.numeric(codigo_sh2),
-    ano = as.numeric(str_sub(nome_sujo, 2, 5)), # O texto é "x2023_valor...". 
     # str_sub(..., 2, 5) diz: "Comece na letra 2 e pare na 5".
+    ano  = as.integer(str_sub(nome_sujo, 2, 5)), 
     tipo = case_when(
-      # Se encontrar "valor" escrito, chame de 'dolar'
       str_detect(nome_sujo, "valor") ~ "dolar",
-      
-      # Se encontrar "quilograma" (ou 'liquido'), chame de 'peso'
-      str_detect(nome_sujo, "quilograma") ~ "peso",
-      
-      # (Opcional) Rede de segurança: Se aparecer algo estranho, avise!
-      TRUE ~ "erro_verificar"
+      str_detect(nome_sujo, "quilograma") ~ "peso"
     )
-    
   ) |> 
+  select(-nome_sujo) |> 
+    group_by(mes, codigo_sh2, codigo_ncm, ano, tipo) |> 
+  summarise(valor = sum(valor, na.rm = TRUE), .groups = "drop") |> 
+    group_by(mes, codigo_sh2, ano, tipo) |> 
+  summarise(valor = sum(valor, na.rm = TRUE), .groups = "drop") |> 
+  
   pivot_wider(
-    names_from = tipo,       # Usa os nomes "dolar" e "peso" 
-    values_from = valor_sujo, # Pega os números misturados
-    values_fn = sum
-  ) |>
+    names_from = tipo,
+    values_from = valor
+  ) |> 
+  
   mutate(
-    # Trocando NA por zero para não dar numeros imensos
-    dolar = replace_na(dolar, 0),
-    peso  = replace_na(peso, 0),
-    preco_ton = (dolar / peso) * 1000,
     preco_ton = if_else(
-      condition = is.infinite(preco_ton) | is.nan(preco_ton), 
-      # se der um numero imenso ou na o valor será 0
-            true      = 0, 
-            false     = preco_ton
+      !is.na(dolar) & peso > 0,
+      (dolar / peso) * 1000,
+      NA_real_
     ),
-    codigo_sh2 = as.numeric(codigo_sh2),
-        produto = case_when(
-      # Codigo SH2   ENTÃO   Nome Legível
-      codigo_sh2 == 10   ~   "Cereais",
-      codigo_sh2 == 12   ~   "Soja",
-      codigo_sh2 == 02   ~   "Carnes",
-      codigo_sh2 == 09   ~   "Café",
-      codigo_sh2 == 17   ~   "Açúcar",
-      
-      # O "Resto"
-      TRUE               ~   "Outros"
-    )
-  ) 
-  
-  
+    codigo_sh2 = as.character(codigo_sh2),
+    Produto = case_when(
+      codigo_sh2 == "02" ~ "Carnes",
+      codigo_sh2 == "09" ~ "Café",
+      codigo_sh2 == "10" ~ "Cereais",
+      codigo_sh2 == "12" ~ "Soja",
+      codigo_sh2 == "17" ~ "Açúcar",
+      TRUE ~ "Outros"
+  )
+  )
 glimpse(dados)
 
-dados |> 
-  filter(produto == "Outros") |> 
-  distinct(codigo_sh2)
+ggplot(dados, aes(x = preco_ton))+
+  geom_histogram(fill= "blue", color = "black")
+ggplot(dados, aes(x= preco_ton))+
+  geom_boxplot(fill="blue", color = "black")
 
+ggplot(dados, aes(sample = preco_ton))+
+  stat_qq()+
+  stat_qq_line(color = "red")
 ```
-Esse Codigoainda está em processso
+
+## Tipo de distribuição
+
+Iremos usar como Inferência mmodelos mistos, o que implica em manter normalidade nos dados. A seguir iremos chegar nessa normalidade (pois já podemos obserar nos gráficos acima que não seguem uma distribuição normal) e fazer as análises descritivas.
+
