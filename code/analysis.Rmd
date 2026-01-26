@@ -82,12 +82,15 @@ glimpse(dados)
 
 ggplot(dados, aes(x = preco_ton))+
   geom_histogram(fill= "blue", color = "black")
+
 ggplot(dados, aes(x= preco_ton))+
   geom_boxplot(fill="blue", color = "black")
 
 ggplot(dados, aes(sample = preco_ton))+
   stat_qq()+
-  stat_qq_line(color = "red")
+  stat_qq_line(color = "red")+
+  facet_wrap(~Produto)
+  
 ```
 
 ## Tipo de distribuição
